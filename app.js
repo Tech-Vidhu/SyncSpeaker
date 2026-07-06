@@ -33,6 +33,31 @@ let ws = null;
 let wsUrl = '';
 let isConnected = false;
 
+// Helper to resolve backend server HTTP endpoints dynamically
+function getApiUrl(path) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const backendParam = urlParams.get('backend');
+    
+    if (backendParam) {
+        const cleanedHost = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
+        const hasPort = cleanedHost.includes(':');
+        const hostOnly = hasPort ? cleanedHost.split(':')[0] : cleanedHost;
+        const port = hasPort ? cleanedHost.split(':')[1] : '5000';
+        return `http://${hostOnly}:${port}${path}`;
+    }
+    
+    const isLocal = window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || 
+                    /^[0-9.]+$/.test(window.location.hostname);
+                    
+    if (isLocal) {
+        return path;
+    }
+    
+    // If loaded from Vercel statically without parameters, assume local Flask is on localhost
+    return `http://localhost:5000${path}`;
+}
+
 // Audio State
 let audioCtx = null;
 let audioBuffer = null;
@@ -276,7 +301,10 @@ function connectWebSocket() {
     let wsHost = window.location.hostname;
     let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     
-    if (backendParam) {
+    if (wsHost === 'sync-speaker.vercel.app' && !backendParam) {
+        wsHost = 'localhost';
+        protocol = 'ws:';
+    } else if (backendParam) {
         wsHost = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
         // If it's a raw IP, connect via ws:// since raw IPs don't have secure SSL certificates
         const isIp = /^[0-9.]+$/.test(wsHost.split(':')[0]);
@@ -378,7 +406,7 @@ function backToLobby() {
 
 async function fetchRoomStatus() {
     try {
-        const response = await fetch('/api/rooms');
+        const response = await fetch(getApiUrl('/api/rooms'));
         const data = await response.json();
         renderRoomCards(data.rooms);
     } catch (err) {
@@ -501,7 +529,7 @@ function jsonMessage(type, payload = {}) {
 // Fetch general server HTTP data
 async function fetchServerInfo() {
     try {
-        const response = await fetch('/api/info');
+        const response = await fetch(getApiUrl('/api/info'));
         const data = await response.json();
         
         // Show Vercel URL with backend IP and room ID query parameters
@@ -623,7 +651,7 @@ async function uploadAudioFile(file) {
     formData.append('audio', file);
     
     try {
-        const response = await fetch('/api/upload', {
+        const response = await fetch(getApiUrl('/api/upload'), {
             method: 'POST',
             body: formData
         });
@@ -1501,7 +1529,7 @@ async function performYTSearch() {
     ytResults.innerHTML = '<div style="color: var(--text-secondary); font-size: 0.85rem; text-align: center; padding: 1.5rem;">Searching YouTube...</div>';
     
     try {
-        const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(getApiUrl(`/api/youtube/search?q=${encodeURIComponent(query)}`));
         const data = await response.json();
         
         if (data.error) {
