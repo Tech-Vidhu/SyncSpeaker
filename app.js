@@ -42,8 +42,16 @@ function getApiUrl(path) {
         const cleanedHost = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
         const hasPort = cleanedHost.includes(':');
         const hostOnly = hasPort ? cleanedHost.split(':')[0] : cleanedHost;
-        const port = hasPort ? cleanedHost.split(':')[1] : '5000';
-        return `http://${hostOnly}:${port}${path}`;
+        const isIp = /^[0-9.]+$/.test(hostOnly);
+        
+        if (isIp) {
+            const port = hasPort ? cleanedHost.split(':')[1] : '5000';
+            return `http://${hostOnly}:${port}${path}`;
+        } else {
+            // It's a domain name (cloud server or tunnel like cloudflare/ngrok/render)
+            const proto = window.location.protocol === 'https:' ? 'https:' : 'http:';
+            return `${proto}//${cleanedHost}${path}`;
+        }
     }
     
     const isLocal = window.location.hostname === 'localhost' || 
@@ -333,19 +341,22 @@ function connectWebSocket() {
     if (wsHost === 'sync-speaker.vercel.app' && !backendParam) {
         wsHost = 'localhost';
         protocol = 'ws:';
+        wsUrl = `${protocol}//${wsHost}:8765`;
     } else if (backendParam) {
         wsHost = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
-        // If it's a raw IP, connect via ws:// since raw IPs don't have secure SSL certificates
+        // If it's a raw IP, connect via ws:// on port 8765
         const isIp = /^[0-9.]+$/.test(wsHost.split(':')[0]);
         if (isIp) {
             protocol = 'ws:';
+            wsUrl = `${protocol}//${wsHost}:8765`;
         } else {
             protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // Cloud domains/tunnels route WS over standard 80/443 or whatever port was specified
+            wsUrl = `${protocol}//${wsHost}`;
         }
+    } else {
+        wsUrl = `${protocol}//${wsHost}:8765`;
     }
-    
-    // Websocket server runs on port 8765
-    wsUrl = `${protocol}//${wsHost}:8765`;
     
     console.log(`Connecting to WebSocket: ${wsUrl}`);
     
@@ -576,12 +587,17 @@ let qrMode = 'wifi'; // Default to 'wifi' for mobile phone compatibility without
 
 function updateQRDisplay() {
     if (!lastServerInfo) return;
-    const ip = lastServerInfo.local_ip;
+    const urlParams = new URLSearchParams(window.location.search);
+    const backendParam = urlParams.get('backend');
+    const isExternalDomain = backendParam && !/^[0-9.]+$/.test(backendParam.split(':')[0]);
+    
+    const targetHost = isExternalDomain ? backendParam : lastServerInfo.local_ip;
     let joinUrl = '';
-    if (qrMode === 'wifi') {
-        joinUrl = `http://${ip}:5000/?room=${currentRoomId || ''}`;
+    
+    if (isExternalDomain || qrMode === 'vercel') {
+        joinUrl = `https://sync-speaker.vercel.app/?backend=${targetHost}&room=${currentRoomId || ''}`;
     } else {
-        joinUrl = `https://sync-speaker.vercel.app/?backend=${ip}&room=${currentRoomId || ''}`;
+        joinUrl = `http://${targetHost}:5000/?room=${currentRoomId || ''}`;
     }
     if (serverUrlDisplay) serverUrlDisplay.textContent = joinUrl;
     if (qrCodeImg) qrCodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(joinUrl)}`;
