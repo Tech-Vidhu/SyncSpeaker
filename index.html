@@ -39,6 +39,20 @@
     </header>
 
     <main>
+        <!-- Mixed Content Security Warning (Visible when mobile browser blocks HTTP/WS on HTTPS site) -->
+        <div id="mixed-content-warning" class="glass-card" style="display: none; background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(249, 115, 22, 0.2) 100%); border: 1px solid rgba(239, 68, 68, 0.5); padding: 1.2rem; margin-bottom: 1.5rem; border-radius: 16px; box-shadow: 0 8px 32px rgba(239, 68, 68, 0.25);">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.6rem;">
+                <span style="font-size: 1.5rem;">⚠️</span>
+                <h3 style="color: #f87171; font-size: 1.05rem; margin: 0; font-weight: 700;">Mobile Browser Security Blocked</h3>
+            </div>
+            <p style="color: var(--text-primary); font-size: 0.88rem; line-height: 1.5; margin-bottom: 1rem;">
+                Your mobile browser is blocking connection from secure <strong style="color:#fff;">https://vercel.app</strong> to your local Wi-Fi server (<strong id="mc-ip-display" style="color:#fff; background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">10.70.236.88</strong>) due to standard Mixed Content rules.
+            </p>
+            <a id="btn-fix-mixed-content" href="#" class="btn-primary" style="display: flex; align-items: center; justify-content: center; gap: 0.6rem; text-decoration: none; background: linear-gradient(135deg, #f97316 0%, #ef4444 100%); padding: 0.85rem 1rem; border-radius: 12px; font-weight: 700; font-size: 0.95rem; box-shadow: 0 4px 15px rgba(249, 115, 22, 0.4);">
+                <span>🚀 Switch to Direct Wi-Fi Link (Fix Offline Issue)</span>
+            </a>
+        </div>
+
         <!-- LOBBY SCREEN -->
         <section id="lobby-screen" class="screen glass-card active">
             <h2>Welcome to SyncSpeaker</h2>
@@ -222,7 +236,16 @@
             <!-- Server Connection Stats / QR Code -->
             <div class="glass-card info-section">
                 <h3>Invite Speakers</h3>
-                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">Scan QR code or open URL on other mobile devices to connect them.</p>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.75rem;">Scan QR code or open URL on other mobile devices to connect them.</p>
+                
+                <!-- QR Mode Switcher (Wi-Fi vs Vercel) -->
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.3); padding: 0.3rem; border-radius: 12px; border: 1px solid var(--card-border);">
+                    <button id="btn-qr-wifi" class="tab-btn active" style="flex: 1; padding: 0.6rem 0.4rem; border: none; background: rgba(6, 182, 212, 0.15); color: var(--glow-cyan); border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.8rem; transition: all 0.2s;">📱 Wi-Fi Link (For Mobiles)</button>
+                    <button id="btn-qr-vercel" class="tab-btn" style="flex: 1; padding: 0.6rem 0.4rem; border: none; background: transparent; color: var(--text-secondary); border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 0.8rem; transition: all 0.2s;">🌐 Vercel Link (Cloud)</button>
+                </div>
+                <div id="qr-mode-help" style="font-size: 0.75rem; color: #a5f3fc; text-align: center; margin-bottom: 0.75rem; background: rgba(6,182,212,0.08); padding: 0.4rem; border-radius: 8px;">
+                    ✨ Recommended for mobile phones on local network (prevents browser security blocks)
+                </div>
                 
                 <div class="info-row">
                     <span class="info-label">Join URL:</span>

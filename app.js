@@ -138,6 +138,11 @@ const btnMicBroadcast = document.getElementById('btn-mic-broadcast');
 const serverUrlDisplay = document.getElementById('server-url-display');
 const qrCodeImg = document.getElementById('qr-code-img');
 const devicesList = document.getElementById('devices-list');
+const btnQrWifi = document.getElementById('btn-qr-wifi');
+const btnQrVercel = document.getElementById('btn-qr-vercel');
+const mixedContentWarning = document.getElementById('mixed-content-warning');
+const mcIpDisplay = document.getElementById('mc-ip-display');
+const btnFixMixedContent = document.getElementById('btn-fix-mixed-content');
 
 const connectionStatusDot = document.getElementById('connection-status-dot');
 const connectionStatusText = document.getElementById('connection-status-text');
@@ -278,6 +283,30 @@ window.addEventListener('DOMContentLoaded', () => {
         delaySlider.dispatchEvent(new Event('input'));
     });
 
+    // QR Code Mode Switcher
+    if (btnQrWifi && btnQrVercel) {
+        btnQrWifi.addEventListener('click', () => {
+            qrMode = 'wifi';
+            btnQrWifi.classList.add('active');
+            btnQrWifi.style.background = 'rgba(6, 182, 212, 0.15)';
+            btnQrWifi.style.color = 'var(--glow-cyan)';
+            btnQrVercel.classList.remove('active');
+            btnQrVercel.style.background = 'transparent';
+            btnQrVercel.style.color = 'var(--text-secondary)';
+            updateQRDisplay();
+        });
+        btnQrVercel.addEventListener('click', () => {
+            qrMode = 'vercel';
+            btnQrVercel.classList.add('active');
+            btnQrVercel.style.background = 'rgba(6, 182, 212, 0.15)';
+            btnQrVercel.style.color = 'var(--glow-cyan)';
+            btnQrWifi.classList.remove('active');
+            btnQrWifi.style.background = 'transparent';
+            btnQrWifi.style.color = 'var(--text-secondary)';
+            updateQRDisplay();
+        });
+    }
+
     // Configure connection status bar
     updateConnectionStatus('connecting');
     connectWebSocket();
@@ -357,6 +386,7 @@ function connectWebSocket() {
 
     ws.onerror = (err) => {
         console.error('WebSocket error:', err);
+        updateConnectionStatus('disconnected');
     };
 }
 
@@ -365,11 +395,26 @@ function updateConnectionStatus(status) {
     if (status === 'connected') {
         connectionStatusDot.classList.add('connected');
         connectionStatusText.textContent = 'Online';
+        if (mixedContentWarning) mixedContentWarning.style.display = 'none';
     } else if (status === 'syncing') {
         connectionStatusDot.classList.add('syncing');
         connectionStatusText.textContent = 'Syncing...';
     } else {
         connectionStatusText.textContent = 'Offline';
+        // Check if offline is caused by browser Mixed Content block (HTTPS page -> HTTP/WS IP)
+        if (window.location.protocol === 'https:' && wsUrl && wsUrl.startsWith('ws://')) {
+            if (mixedContentWarning) {
+                mixedContentWarning.style.display = 'block';
+                const urlParams = new URLSearchParams(window.location.search);
+                const backendParam = urlParams.get('backend') || '10.70.236.88';
+                const cleanIp = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').split(':')[0];
+                if (mcIpDisplay) mcIpDisplay.textContent = cleanIp;
+                if (btnFixMixedContent) {
+                    const targetRoom = urlParams.get('room') || currentRoomId || 'SYNC-101';
+                    btnFixMixedContent.href = `http://${cleanIp}:5000/?room=${targetRoom}`;
+                }
+            }
+        }
     }
 }
 
@@ -526,20 +571,29 @@ function jsonMessage(type, payload = {}) {
     return JSON.stringify({ type, ...payload });
 }
 
+let lastServerInfo = null;
+let qrMode = 'wifi'; // Default to 'wifi' for mobile phone compatibility without Mixed Content blocks
+
+function updateQRDisplay() {
+    if (!lastServerInfo) return;
+    const ip = lastServerInfo.local_ip;
+    let joinUrl = '';
+    if (qrMode === 'wifi') {
+        joinUrl = `http://${ip}:5000/?room=${currentRoomId || ''}`;
+    } else {
+        joinUrl = `https://sync-speaker.vercel.app/?backend=${ip}&room=${currentRoomId || ''}`;
+    }
+    if (serverUrlDisplay) serverUrlDisplay.textContent = joinUrl;
+    if (qrCodeImg) qrCodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(joinUrl)}`;
+}
+
 // Fetch general server HTTP data
 async function fetchServerInfo() {
     try {
         const response = await fetch(getApiUrl('/api/info'));
         const data = await response.json();
-        
-        // Show Vercel URL with backend IP and room ID query parameters
-        const vercelUrl = `https://sync-speaker.vercel.app/?backend=${data.local_ip}&room=${currentRoomId}`;
-        serverUrlDisplay.textContent = vercelUrl;
-        
-        // Generate QR code for Vercel URL
-        qrCodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(vercelUrl)}`;
-        
-        // Room state is now sent via WebSocket on join, not via HTTP
+        lastServerInfo = data;
+        updateQRDisplay();
     } catch (err) {
         console.error('Error fetching server info:', err);
     }

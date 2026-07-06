@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sync-speaker-v1';
+const CACHE_NAME = 'sync-speaker-v2';
 const ASSETS = [
   '/',
   '/index.html',
