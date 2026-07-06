@@ -162,6 +162,23 @@ window.addEventListener('DOMContentLoaded', () => {
     btnHostBack.addEventListener('click', leaveSession);
     btnSpeakerBack.addEventListener('click', leaveSession);
 
+    // Auto-join if backend and room parameters are present in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const backendParam = urlParams.get('backend');
+    const roomParam = urlParams.get('room');
+    
+    if (backendParam && roomParam) {
+        console.log(`Auto-joining room ${roomParam} with backend ${backendParam}`);
+        role = 'speaker';
+        currentRoomId = roomParam.toUpperCase();
+        
+        // Connect WebSocket immediately and then start session
+        connectWebSocket();
+        startSession();
+    } else if (roomParam) {
+        roomIdInput.value = roomParam.toUpperCase();
+    }
+
     // Room screen events
     btnRoomBack.addEventListener('click', backToLobby);
     btnRoomConnect.addEventListener('click', connectSpeakerToRoom);
@@ -252,10 +269,26 @@ function connectWebSocket() {
     if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
         return;
     }
-    // Determine websocket URL from current location
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const backendParam = urlParams.get('backend');
+    
+    let wsHost = window.location.hostname;
+    let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    
+    if (backendParam) {
+        wsHost = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
+        // If it's a raw IP, connect via ws:// since raw IPs don't have secure SSL certificates
+        const isIp = /^[0-9.]+$/.test(wsHost.split(':')[0]);
+        if (isIp) {
+            protocol = 'ws:';
+        } else {
+            protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        }
+    }
+    
     // Websocket server runs on port 8765
-    wsUrl = `${protocol}//${window.location.hostname}:8765`;
+    wsUrl = `${protocol}//${wsHost}:8765`;
     
     console.log(`Connecting to WebSocket: ${wsUrl}`);
     
@@ -471,12 +504,12 @@ async function fetchServerInfo() {
         const response = await fetch('/api/info');
         const data = await response.json();
         
-        // Show server URL and QR Code
-        const serverUrl = `http://${data.local_ip}:5000`;
-        serverUrlDisplay.textContent = serverUrl;
+        // Show Vercel URL with backend IP and room ID query parameters
+        const vercelUrl = `https://sync-speaker.vercel.app/?backend=${data.local_ip}&room=${currentRoomId}`;
+        serverUrlDisplay.textContent = vercelUrl;
         
-        // Use QR Server API to generate QR Code image src
-        qrCodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(serverUrl)}`;
+        // Generate QR code for Vercel URL
+        qrCodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(vercelUrl)}`;
         
         // Room state is now sent via WebSocket on join, not via HTTP
     } catch (err) {
