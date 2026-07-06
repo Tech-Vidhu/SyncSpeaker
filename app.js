@@ -635,6 +635,17 @@ function initAudio() {
     // Create Analyser for visualizer
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 128;
+    
+    // Play a silent buffer to unlock AudioContext on iOS/Android browsers
+    try {
+        const buffer = audioCtx.createBuffer(1, 1, 22050);
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.start(0);
+    } catch (e) {
+        console.warn('Failed to play silent unlock buffer:', e);
+    }
 }
 
 // Host file upload
@@ -1304,6 +1315,10 @@ async function startMicBroadcast() {
     
     try {
         // Request microphone access
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert("Microphone permission is blocked. If you are on a mobile device, please make sure you are loading the page over a secure connection (HTTPS) like Vercel.");
+            return;
+        }
         micStream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 echoCancellation: false,
@@ -1917,7 +1932,8 @@ function setupUnmuteOverlay() {
         hasUserGesture = true;
         overlay.style.display = 'none';
         
-        // Initialize AudioContext if not active
+        // Initialize AudioContext on user gesture
+        initAudio();
         if (audioCtx && audioCtx.state === 'suspended') {
             audioCtx.resume();
         }
