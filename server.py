@@ -76,11 +76,13 @@ def serve_upload(filename):
 @app.route('/api/info', methods=['GET'])
 def get_info():
     local_ip = get_local_ip()
+    http_port = int(os.environ.get('PORT', 5000))
+    ws_port = int(os.environ.get('WS_PORT', 8765))
     return jsonify({
         "server_time": int(time.time() * 1000),
         "local_ip": local_ip,
-        "http_port": 5000,
-        "ws_port": 8765
+        "http_port": http_port,
+        "ws_port": ws_port
     })
 
 # API: Get Room Status
@@ -436,8 +438,9 @@ async def broadcast_binary_to_speakers(room_id, payload, exclude=None):
 # Main WS Server Loop
 async def start_ws():
     local_ip = get_local_ip()
-    async with websockets.serve(ws_handler, "0.0.0.0", 8765):
-        print(f"[WS] Server running on ws://0.0.0.0:8765 (Local IP: ws://{local_ip}:8765)")
+    ws_port = int(os.environ.get('WS_PORT', 8765))
+    async with websockets.serve(ws_handler, "0.0.0.0", ws_port):
+        print(f"[WS] Server running on ws://0.0.0.0:{ws_port} (Local IP: ws://{local_ip}:{ws_port})")
         await asyncio.Future()  # run forever
 
 def run_ws_loop():
@@ -452,11 +455,14 @@ if __name__ == '__main__':
     
     # Start Flask Web Server
     local_ip = get_local_ip()
+    http_port = int(os.environ.get('PORT', 5000))
+    ws_port = int(os.environ.get('WS_PORT', 8765))
     print("\n" + "="*60)
     print(f" NETWORK SPEAKER SYNC SERVER STARTED")
-    print(f" Web UI URL: http://localhost:5000")
-    print(f" Local Wi-Fi URL: http://{local_ip}:5000")
+    print(f" Web UI URL: http://localhost:{http_port}")
+    print(f" Local Wi-Fi URL: http://{local_ip}:{http_port}")
+    print(f" WebSocket Port: {ws_port}")
     print(f" Available Rooms: {', '.join(ROOM_IDS)}")
     print("="*60 + "\n")
     
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=http_port, debug=False)
