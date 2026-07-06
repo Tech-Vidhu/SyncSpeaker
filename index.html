@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0a0a0f">
+    <title>Network Speaker Sync</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+    <!-- SVG Gradients and Icons -->
+    <svg style="display: none;">
+        <defs>
+            <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#06b6d4" />
+                <stop offset="100%" stop-color="#8b5cf6" />
+            </linearGradient>
+        </defs>
+    </svg>
+
+    <header>
+        <div class="logo">
+            <!-- Soundwave SVG icon -->
+            <svg class="logo-icon" viewBox="0 0 24 24">
+                <rect x="2" y="10" width="3" height="4" rx="1.5" />
+                <rect x="7" y="6" width="3" height="12" rx="1.5" />
+                <rect x="12" y="3" width="3" height="18" rx="1.5" />
+                <rect x="17" y="8" width="3" height="8" rx="1.5" />
+                <rect x="22" y="11" width="3" height="2" rx="1.5" />
+            </svg>
+            SyncSpeaker
+        </div>
+        <div class="connection-badge">
+            <span id="connection-status-dot" class="status-dot"></span>
+            <span id="connection-status-text">Connecting...</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- LOBBY SCREEN -->
+        <section id="lobby-screen" class="screen glass-card active">
+            <h2>Welcome to SyncSpeaker</h2>
+            <p class="subtitle">Turn multiple mobile devices into a unified, synchronized speaker system.</p>
+            
+            <div class="name-input-group">
+                <label for="device-name">This Device Name</label>
+                <input type="text" id="device-name" class="text-input" placeholder="e.g., Living Room Phone">
+            </div>
+
+            <div class="lobby-options">
+                <button id="btn-select-host" class="btn-lobby btn-lobby-host">
+                    <div class="icon-box">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                            <path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
+                            <line x1="12" x2="12" y1="19" y2="22"></line>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="option-title">Host Speaker</div>
+                        <div class="option-desc">Upload audio files and control playback across all connected speakers.</div>
+                    </div>
+                </button>
+
+                <button id="btn-select-speaker" class="btn-lobby btn-lobby-speaker">
+                    <div class="icon-box">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="option-title">Join as Speaker</div>
+                        <div class="option-desc">Act as an extra speaker. Playback will sync with the host automatically.</div>
+                    </div>
+                </button>
+            </div>
+        </section>
+
+        <!-- ROOM SELECTION SCREEN -->
+        <section id="room-screen" class="screen glass-card">
+            <h2 id="room-screen-title">Select a Room</h2>
+            <p id="room-screen-subtitle" class="subtitle">Choose a room to host your music session.</p>
+
+            <!-- Host: Room Cards -->
+            <div id="room-host-picker" style="display: none;">
+                <div id="room-cards-container" class="room-cards">
+                    <!-- Filled dynamically by JS -->
+                </div>
+                <p style="font-size: 0.75rem; color: var(--text-secondary); text-align: center; margin-top: 1rem;">Only one host per room. Green = available, Red = occupied.</p>
+            </div>
+
+            <!-- Speaker: Room ID Input -->
+            <div id="room-speaker-input" style="display: none;">
+                <div class="name-input-group" style="margin-bottom: 1.25rem;">
+                    <label for="room-id-input">Room ID</label>
+                    <input type="text" id="room-id-input" class="text-input" placeholder="e.g., SYNC-101" style="text-transform: uppercase; letter-spacing: 1px; text-align: center; font-weight: 600; font-size: 1.1rem;">
+                </div>
+                <button id="btn-room-connect" class="btn-primary" style="width: 100%; padding: 0.8rem; font-size: 1rem;">Connect to Room</button>
+                <div id="room-error-msg" style="color: #ef4444; font-size: 0.85rem; text-align: center; margin-top: 0.75rem; display: none;"></div>
+            </div>
+
+            <button id="btn-room-back" class="btn-secondary" style="margin-top: 1.25rem;">
+                ← Back to Lobby
+            </button>
+        </section>
+
+        <!-- HOST CONTROL SCREEN -->
+        <section id="host-screen" class="screen">
+            <div class="glass-card">
+                <h2>Control Panel (Host)</h2>
+                <p class="subtitle">Select your media source and play music simultaneously on all receivers.</p>
+                
+                <!-- Room ID Badge -->
+                <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 1.25rem; padding: 0.6rem 1rem; background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%); border: 1px solid rgba(6, 182, 212, 0.2); border-radius: 12px;">
+                    <span style="font-size: 0.8rem; color: var(--text-secondary);">Room:</span>
+                    <span id="host-room-id-display" style="font-weight: 700; font-size: 1.1rem; letter-spacing: 1.5px; color: var(--glow-cyan);">—</span>
+                </div>
+                
+                <!-- Source switcher tabs -->
+                <div class="tabs-container" style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem; background: rgba(0, 0, 0, 0.25); padding: 0.25rem; border-radius: 12px; border: 1px solid var(--card-border);">
+                    <button id="tab-file" class="tab-btn active" style="flex: 1; padding: 0.5rem; border: none; background: rgba(255,255,255,0.08); color: var(--text-primary); border-radius: 8px; cursor: pointer; font-weight: 500; font-family: var(--font-sans); font-size: 0.85rem; transition: all 0.2s;">Local Files</button>
+                    <button id="tab-mic" class="tab-btn" style="flex: 1; padding: 0.5rem; border: none; background: transparent; color: var(--text-secondary); border-radius: 8px; cursor: pointer; font-weight: 500; font-family: var(--font-sans); font-size: 0.85rem; transition: all 0.2s;">Phone Mic</button>
+                    <button id="tab-youtube" class="tab-btn" style="flex: 1; padding: 0.5rem; border: none; background: transparent; color: var(--text-secondary); border-radius: 8px; cursor: pointer; font-weight: 500; font-family: var(--font-sans); font-size: 0.85rem; transition: all 0.2s;">YouTube</button>
+                </div>
+
+                <!-- FILE SOURCE SECTION -->
+                <div id="source-file-section" class="source-section">
+                    <!-- Upload Zone -->
+                    <div id="drop-zone" class="upload-area">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" x2="12" y1="3" y2="15"></line>
+                        </svg>
+                        <p>Drag your audio file here or <span class="browse-link">browse</span></p>
+                        <input type="file" id="file-input" accept="audio/*">
+                    </div>
+                </div>
+
+                <!-- MICROPHONE SOURCE SECTION -->
+                <div id="source-mic-section" class="source-section" style="display: none;">
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem; text-align: center;">Hold Host phone close to any music speaker (Spotify, Laptop, TV) to broadcast it.</p>
+                </div>
+
+                <!-- YOUTUBE SOURCE SECTION -->
+                <div id="source-youtube-section" class="source-section" style="display: none; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="yt-search-input" class="text-input" style="flex-grow: 1; font-size: 0.9rem;" placeholder="Search YouTube tracks...">
+                        <button id="btn-yt-search" class="btn-primary" style="padding: 0.6rem 1.1rem; font-size: 0.9rem;">Search</button>
+                    </div>
+                    <div id="yt-results" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 220px; overflow-y: auto; padding-right: 0.2rem; border-radius: 8px;">
+                        <div style="color: var(--text-secondary); font-size: 0.85rem; text-align: center; padding: 1.5rem;">Enter a query and tap Search.</div>
+                    </div>
+                </div>
+
+                <!-- Player Interface -->
+                <div id="player-container" class="player-card" style="display: none;">
+                    <div class="track-info">
+                        <div id="host-disc" class="disc-art"></div>
+                        <div class="track-details">
+                            <div id="host-track-title" class="track-title">Loading track...</div>
+                            <div class="track-artist">Sync Speaker Stream</div>
+                        </div>
+                    </div>
+
+                    <div class="progress-container">
+                        <div id="progress-bar-wrapper" class="progress-bar-wrapper">
+                            <div id="progress-fill" class="progress-fill"></div>
+                        </div>
+                        <div class="time-labels">
+                            <span id="time-current">0:00</span>
+                            <span id="time-duration">0:00</span>
+                        </div>
+                    </div>
+
+                    <div class="controls">
+                        <button id="btn-play-pause" class="btn-ctrl btn-play-pause">
+                            <!-- Play Icon -->
+                            <svg id="play-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            <!-- Pause Icon (hidden by default) -->
+                            <svg id="pause-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                                <rect x="6" y="4" width="4" height="16"></rect>
+                                <rect x="14" y="4" width="4" height="16"></rect>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- YouTube Player Interface (Host) -->
+                <div id="host-youtube-player-container" class="player-card" style="display: none; flex-direction: column; gap: 0.75rem; overflow: hidden; background: rgba(0, 0, 0, 0.3); border-radius: 16px; margin-bottom: 1rem;">
+                    <div id="host-youtube-wrapper" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; background: black; border: 1px solid var(--card-border); overflow: hidden;">
+                        <div id="host-youtube-iframe" style="width: 100%; height: 100%;"></div>
+                    </div>
+                    <div style="font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0.1rem;" id="host-yt-title">No Video Loaded</div>
+                </div>
+
+                <div class="action-row" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                    <button id="btn-mic-broadcast" class="btn-primary" style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 0.5rem; background: linear-gradient(135deg, #ef4444 0%, #ec4899 100%); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                            <path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
+                            <line x1="12" x2="12" y1="19" y2="22"></line>
+                        </svg>
+                        <span>Play by Phone Mic (Live Broadcast)</span>
+                    </button>
+
+                    <button id="btn-sync-ping" class="btn-secondary" style="width: 100%;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="m22 2-7 20-4-9-9-4Z"></path>
+                            <path d="M22 2 11 13"></path>
+                        </svg>
+                        Flash/Ping All Speakers (Sync Test)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Server Connection Stats / QR Code -->
+            <div class="glass-card info-section">
+                <h3>Invite Speakers</h3>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem;">Scan QR code or open URL on other mobile devices to connect them.</p>
+                
+                <div class="info-row">
+                    <span class="info-label">Join URL:</span>
+                    <span id="server-url-display" class="info-value">http://...</span>
+                </div>
+                
+                <div class="qr-box">
+                    <div class="qr-code">
+                        <img id="qr-code-img" src="" alt="QR Code Link">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Connected Speakers List -->
+            <div class="glass-card devices-card">
+                <h3>Connected Devices</h3>
+                <div id="devices-list" class="devices-list">
+                    <div style="color: var(--text-secondary); font-size: 0.9rem; text-align: center; padding: 1rem;">No other speakers connected yet.</div>
+                </div>
+            </div>
+
+            <button id="btn-host-back" class="btn-secondary">
+                ← Back to Lobby
+            </button>
+        </section>
+
+        <!-- SPEAKER RECEIVER SCREEN -->
+        <section id="speaker-screen" class="screen">
+            <!-- YouTube Audio Mini-Player (Speaker) - Must be VISIBLE for mobile browsers to allow audio -->
+            <div id="speaker-youtube-player-container" class="glass-card" style="display: none; padding: 0.75rem; overflow: hidden; border-radius: 16px; margin-bottom: 1.25rem; border: 1px solid rgba(6, 182, 212, 0.2);">
+                <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.1rem;">🎵</span>
+                    <span id="speaker-yt-label" style="font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Audio Source</span>
+                    <span style="font-size: 0.65rem; color: var(--glow-cyan); background: rgba(6,182,212,0.12); padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px;">LIVE</span>
+                </div>
+                <div id="speaker-youtube-wrapper" style="width: 100%; aspect-ratio: 16/9; display: block; border-radius: 10px; overflow: hidden; background: #000;">
+                    <div id="speaker-youtube-iframe" style="width: 100%; height: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- Visualizer Card -->
+            <div class="glass-card" style="padding: 1.5rem;">
+                <div class="visualizer-container">
+                    <canvas id="canvas-visualizer"></canvas>
+                    <div class="status-overlay">
+                        <div id="speaker-main-status" class="status-main">Waiting for Host</div>
+                        <div id="speaker-sub-status" class="status-sub">Ready to synchronize</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Speaker Sync Calibration Adjustments -->
+            <div class="glass-card calibration-box">
+                <div class="calibration-header">
+                    <span class="calibration-title">Manual Latency Calibration</span>
+                    <span id="delay-val" class="calibration-value">+0 ms</span>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">If this phone is slightly out of sync due to hardware output latency, adjust this slider to align the sound.</p>
+                <div class="calibration-slider-wrapper">
+                    <button id="btn-delay-minus" class="calibration-btn">-</button>
+                    <input type="range" id="delay-slider" class="slider" min="-300" max="300" step="5" value="0">
+                    <button id="btn-delay-plus" class="calibration-btn">+</button>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary);">
+                    <span>Sound Earlier (-)</span>
+                    <span>Sound Later (+)</span>
+                </div>
+            </div>
+
+            <!-- Connection Status Card -->
+            <div class="glass-card info-section">
+                <h3>Speaker Details</h3>
+                <div class="info-row">
+                    <span class="info-label">Server Connection:</span>
+                    <span id="speaker-ping-display" class="info-value">0 ms</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Estimated Offset:</span>
+                    <span id="speaker-offset-display" class="info-value">Calculating...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Buffered Track:</span>
+                    <span id="speaker-track-display" class="info-value" style="word-break: break-all; max-width: 70%; text-align: right;">None</span>
+                </div>
+            </div>
+
+            <button id="btn-speaker-back" class="btn-secondary">
+                ← Back to Lobby
+            </button>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
