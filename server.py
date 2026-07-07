@@ -3,14 +3,14 @@ import time
 import json
 import socket
 import threading
-import asyncio
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import websockets
+from flask_sock import Sock
 
 # Flask Application Setup
 app = Flask(__name__, static_folder='.')
 CORS(app)
+sock = Sock(app)
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -77,12 +77,11 @@ def serve_upload(filename):
 def get_info():
     local_ip = get_local_ip()
     http_port = int(os.environ.get('PORT', 5000))
-    ws_port = int(os.environ.get('WS_PORT', 8765))
     return jsonify({
         "server_time": int(time.time() * 1000),
         "local_ip": local_ip,
         "http_port": http_port,
-        "ws_port": ws_port
+        "ws_port": http_port
     })
 
 # API: Get Room Status
@@ -224,18 +223,23 @@ def youtube_download():
         return jsonify({"error": str(e)}), 500
 
 # WebSocket Server Handler
-async def ws_handler(websocket):
+@sock.route('/ws')
+def ws_handler(websocket):
     # Initially client is not in any room
     print(f"[WS] Client connected. Awaiting room join.")
     
     try:
-        async for message in websocket:
+        while True:
+            message = websocket.receive()
+            if message is None:
+                break
+                
             # Check if message is binary (microphone audio data)
             if isinstance(message, bytes):
                 # Relay raw binary audio data to all speaker clients in the same room
                 room_id = client_rooms.get(websocket)
                 if room_id and room_id in rooms:
-                    await broadcast_binary_to_speakers(room_id, message, exclude=websocket)
+                    broadcast_binary_to_speakers(room_id, message, exclude=websocket)
                 continue
 
             data = json.loads(message)
@@ -245,7 +249,7 @@ async def ws_handler(websocket):
                 # Clock Sync Protocol (NTP style)
                 t1 = int(time.time() * 1000)
                 client_time = data.get("clientTime", 0)
-                await websocket.send(json.dumps({
+                websocket.send(json.dumps({
                     "type": "pong",
                     "clientTime": client_time,
                     "serverRecvTime": t1,
@@ -260,7 +264,7 @@ async def ws_handler(websocket):
                 
                 # Validate room
                 if room_id not in rooms:
-                    await websocket.send(json.dumps({
+                    websocket.send(json.dumps({
                         "type": "error",
                         "message": f"Room '{room_id}' does not exist. Valid rooms: {', '.join(ROOM_IDS)}"
                     }))
@@ -276,7 +280,7 @@ async def ws_handler(websocket):
                         if ws != websocket
                     )
                     if existing_host:
-                        await websocket.send(json.dumps({
+                        websocket.send(json.dumps({
                             "type": "error",
                             "message": "This room already has a host. Only one host is allowed per room."
                         }))
@@ -286,7 +290,7 @@ async def ws_handler(websocket):
                 old_room_id = client_rooms.get(websocket)
                 if old_room_id and old_room_id in rooms:
                     rooms[old_room_id]["clients"].pop(websocket, None)
-                    await broadcast_devices(old_room_id)
+                    broadcast_devices(old_room_id)
                 
                 # Add to the new room
                 room["clients"][websocket] = {"name": name, "role": role}
@@ -295,19 +299,19 @@ async def ws_handler(websocket):
                 print(f"[WS] Device '{name}' joined room {room_id} as {role}")
                 
                 # Send current room state
-                await websocket.send(json.dumps({
+                websocket.send(json.dumps({
                     "type": "state",
                     "state": room["state"]
                 }))
                 
                 # Send join success confirmation
-                await websocket.send(json.dumps({
+                websocket.send(json.dumps({
                     "type": "joined",
                     "roomId": room_id,
                     "role": role
                 }))
                 
-                await broadcast_devices(room_id)
+                broadcast_devices(room_id)
                 
             elif msg_type == "control":
                 # Host sending playback control commands
@@ -342,18 +346,17 @@ async def ws_handler(websocket):
                         room["state"]["playTime"] = 0
                 
                 # Broadcast updated state to everyone in the room
-                await broadcast_state(room_id)
+                broadcast_state(room_id)
                 
             elif msg_type == "device_ping":
                 # Direct trigger to flash or sound-beep all speakers (sync test)
                 room_id = client_rooms.get(websocket)
                 if room_id and room_id in rooms:
-                    await broadcast_to_speakers(room_id, {
+                    broadcast_to_speakers(room_id, {
                         "type": "beep",
                         "time": int(time.time() * 1000) + 400
                     })
-                
-    except websockets.exceptions.ConnectionClosed:
+    except Exception:
         pass
     finally:
         # Remove from room and client tracking
@@ -367,19 +370,19 @@ async def ws_handler(websocket):
             if was_host:
                 rooms[room_id]["state"] = make_default_state()
                 print(f"[WS] Host left room {room_id}. Room state reset.")
-                await broadcast_state(room_id)
+                broadcast_state(room_id)
             
-            await broadcast_devices(room_id)
+            broadcast_devices(room_id)
         else:
             print(f"[WS] Unregistered client disconnected.")
 
-async def safe_send(client, message):
+def safe_send(client, message):
     try:
-        await client.send(message)
+        client.send(message)
     except Exception:
         pass
 
-async def broadcast_state(room_id):
+def broadcast_state(room_id):
     """Broadcasts current room state to all clients in a room."""
     if room_id not in rooms:
         return
@@ -390,9 +393,10 @@ async def broadcast_state(room_id):
         "type": "state",
         "state": room["state"]
     })
-    await asyncio.gather(*[safe_send(client, message) for client in list(room["clients"].keys())], return_exceptions=True)
+    for client in list(room["clients"].keys()):
+        safe_send(client, message)
 
-async def broadcast_devices(room_id):
+def broadcast_devices(room_id):
     """Sends list of connected devices to all clients in a room."""
     if room_id not in rooms:
         return
@@ -410,20 +414,20 @@ async def broadcast_devices(room_id):
         "type": "devices",
         "devices": devices
     })
-    
-    await asyncio.gather(*[safe_send(client, message) for client in list(room["clients"].keys())], return_exceptions=True)
+    for client in list(room["clients"].keys()):
+        safe_send(client, message)
 
-async def broadcast_to_speakers(room_id, payload):
+def broadcast_to_speakers(room_id, payload):
     """Sends control messages only to speakers in a room."""
     if room_id not in rooms:
         return
     room = rooms[room_id]
     message = json.dumps(payload)
     speakers = [client for client, info in list(room["clients"].items()) if info["role"] == "speaker"]
-    if speakers:
-        await asyncio.gather(*[safe_send(client, message) for client in speakers], return_exceptions=True)
+    for client in speakers:
+        safe_send(client, message)
 
-async def broadcast_binary_to_speakers(room_id, payload, exclude=None):
+def broadcast_binary_to_speakers(room_id, payload, exclude=None):
     """Sends raw binary PCM chunks to speaker clients in a room."""
     if room_id not in rooms:
         return
@@ -432,36 +436,18 @@ async def broadcast_binary_to_speakers(room_id, payload, exclude=None):
         client for client, info in list(room["clients"].items()) 
         if info["role"] == "speaker" and client != exclude
     ]
-    if speakers:
-        await asyncio.gather(*[safe_send(client, payload) for client in speakers], return_exceptions=True)
-
-# Main WS Server Loop
-async def start_ws():
-    local_ip = get_local_ip()
-    ws_port = int(os.environ.get('WS_PORT', 8765))
-    async with websockets.serve(ws_handler, "0.0.0.0", ws_port):
-        print(f"[WS] Server running on ws://0.0.0.0:{ws_port} (Local IP: ws://{local_ip}:{ws_port})")
-        await asyncio.Future()  # run forever
-
-def run_ws_loop():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(start_ws())
+    for client in speakers:
+        safe_send(client, payload)
 
 if __name__ == '__main__':
-    # Start WebSockets server in a background thread
-    ws_thread = threading.Thread(target=run_ws_loop, daemon=True)
-    ws_thread.start()
-    
     # Start Flask Web Server
     local_ip = get_local_ip()
     http_port = int(os.environ.get('PORT', 5000))
-    ws_port = int(os.environ.get('WS_PORT', 8765))
     print("\n" + "="*60)
     print(f" NETWORK SPEAKER SYNC SERVER STARTED")
     print(f" Web UI URL: http://localhost:{http_port}")
     print(f" Local Wi-Fi URL: http://{local_ip}:{http_port}")
-    print(f" WebSocket Port: {ws_port}")
+    print(f" WebSocket Endpoint: /ws (Shared Port: {http_port})")
     print(f" Available Rooms: {', '.join(ROOM_IDS)}")
     print("="*60 + "\n")
     

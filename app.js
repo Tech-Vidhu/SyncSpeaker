@@ -335,28 +335,34 @@ function connectWebSocket() {
     const urlParams = new URLSearchParams(window.location.search);
     const backendParam = urlParams.get('backend');
     
+    let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     let wsHost = window.location.hostname;
-    let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let wsPort = window.location.port ? `:${window.location.port}` : '';
+    let wsPath = '/ws';
     
-    if (wsHost === 'sync-speaker.vercel.app' && !backendParam) {
+    if (window.location.hostname === 'sync-speaker.vercel.app' && !backendParam) {
+        wsProtocol = 'ws:';
         wsHost = 'localhost';
-        protocol = 'ws:';
-        wsUrl = `${protocol}//${wsHost}:8765`;
+        wsPort = ':5000';
     } else if (backendParam) {
-        wsHost = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
-        // If it's a raw IP, connect via ws:// on port 8765
-        const isIp = /^[0-9.]+$/.test(wsHost.split(':')[0]);
+        const cleanedHost = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
+        const hasPort = cleanedHost.includes(':');
+        const hostOnly = hasPort ? cleanedHost.split(':')[0] : cleanedHost;
+        const isIp = /^[0-9.]+$/.test(hostOnly);
+        
         if (isIp) {
-            protocol = 'ws:';
-            wsUrl = `${protocol}//${wsHost}:8765`;
+            wsProtocol = 'ws:';
+            const port = hasPort ? cleanedHost.split(':')[1] : '5000';
+            wsHost = hostOnly;
+            wsPort = `:${port}`;
         } else {
-            protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            // Cloud domains/tunnels route WS over standard 80/443 or whatever port was specified
-            wsUrl = `${protocol}//${wsHost}`;
+            wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            wsHost = cleanedHost;
+            wsPort = '';
         }
-    } else {
-        wsUrl = `${protocol}//${wsHost}:8765`;
     }
+    
+    wsUrl = `${wsProtocol}//${wsHost}${wsPort}${wsPath}`;
     
     console.log(`Connecting to WebSocket: ${wsUrl}`);
     
