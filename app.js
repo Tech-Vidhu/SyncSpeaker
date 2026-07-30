@@ -1731,9 +1731,14 @@ function startDriftCheck() {
         const serverPlayElapsed = currentServerTime - playTime;
         const expectedOffset = playAudioOffset + (serverPlayElapsed / 1000.0);
         
-        // Actual song offset based on real hardware playback progress
-        const ctxElapsed = contextTime - playCtxTime;
+        // Actual song offset based on real hardware playback progress (integrated over time)
+        const currentRate = currentSource.playbackRate.value;
+        const ctxElapsed = (contextTime - playCtxTime) * currentRate;
         const actualOffset = playAudioOffset + ctxElapsed;
+        
+        // Step forward the integration baseline for the next interval
+        playCtxTime = contextTime;
+        playAudioOffset = actualOffset;
         
         const drift = expectedOffset - actualOffset; // in seconds
         
