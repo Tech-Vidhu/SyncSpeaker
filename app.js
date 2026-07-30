@@ -107,7 +107,7 @@ let visualizerAnimationId = null;
 
 // Clock Sync (NTP) State
 let serverOffset = 0;      // Server time - Client time (ms)
-const SYNC_INTERVAL = 3000; // sync clock every 3s
+const SYNC_INTERVAL = 2000; // sync clock every 2s
 let syncTimer = null;
 let pidIntegral = 0; // PID controller state for drift correction
 
