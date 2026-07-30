@@ -123,10 +123,17 @@ const roomScreenTitle = document.getElementById('room-screen-title');
 const roomScreenSubtitle = document.getElementById('room-screen-subtitle');
 const roomHostPicker = document.getElementById('room-host-picker');
 const roomSpeakerInput = document.getElementById('room-speaker-input');
-const roomCardsContainer = document.getElementById('room-cards-container');
+const hostRoomNameInput = document.getElementById('host-room-name-input');
+const btnCreateRoom = document.getElementById('btn-create-room');
+const btnCreateRoomText = document.getElementById('btn-create-room-text');
+const activeRoomsList = document.getElementById('active-rooms-list');
+const btnRefreshRooms = document.getElementById('btn-refresh-rooms');
 const roomIdInput = document.getElementById('room-id-input');
 const btnRoomConnect = document.getElementById('btn-room-connect');
-const roomErrorMsg = document.getElementById('room-error-msg');
+const hostRoomErrorMsg = document.getElementById('host-room-error-msg');
+const speakerRoomErrorMsg = document.getElementById('speaker-room-error-msg');
+
+let roomRefreshInterval = null; // Auto-refresh timer for speaker room browser
 
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
@@ -209,20 +216,37 @@ window.addEventListener('DOMContentLoaded', () => {
         console.log(`Auto-joining room ${roomParam} with backend ${backendParam}`);
         role = 'speaker';
         currentRoomId = roomParam.toUpperCase();
-        
-        // Connect WebSocket immediately and then start session
         connectWebSocket();
         startSession();
     } else if (roomParam) {
-        roomIdInput.value = roomParam.toUpperCase();
+        if (roomIdInput) roomIdInput.value = roomParam.toUpperCase();
     }
 
     // Room screen events
     btnRoomBack.addEventListener('click', backToLobby);
-    btnRoomConnect.addEventListener('click', connectSpeakerToRoom);
-    roomIdInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') connectSpeakerToRoom();
-    });
+    if (btnRoomConnect) {
+        btnRoomConnect.addEventListener('click', connectSpeakerToRoom);
+    }
+    if (roomIdInput) {
+        roomIdInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') connectSpeakerToRoom();
+        });
+    }
+
+    // Host: Create Room button
+    if (btnCreateRoom) {
+        btnCreateRoom.addEventListener('click', createAndJoinRoom);
+    }
+    if (hostRoomNameInput) {
+        hostRoomNameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') createAndJoinRoom();
+        });
+    }
+
+    // Speaker: Refresh rooms button
+    if (btnRefreshRooms) {
+        btnRefreshRooms.addEventListener('click', () => fetchActiveRooms());
+    }
 
     // Save device name on change
     deviceNameInput.addEventListener('change', () => {
@@ -427,7 +451,7 @@ function updateConnectionStatus(status) {
                 const cleanIp = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').split(':')[0];
                 if (mcIpDisplay) mcIpDisplay.textContent = cleanIp;
                 if (btnFixMixedContent) {
-                    const targetRoom = urlParams.get('room') || currentRoomId || 'SYNC-101';
+                    const targetRoom = urlParams.get('room') || currentRoomId || '';
                     btnFixMixedContent.href = `http://${cleanIp}:5000/?room=${targetRoom}`;
                 }
             }
@@ -441,82 +465,169 @@ function showRoomScreen(selectedRole) {
     lobbyScreen.classList.remove('active');
     roomScreen.classList.add('active');
     
-    roomErrorMsg.style.display = 'none';
+    if (hostRoomErrorMsg) hostRoomErrorMsg.style.display = 'none';
+    if (speakerRoomErrorMsg) speakerRoomErrorMsg.style.display = 'none';
     
     if (role === 'host') {
-        roomScreenTitle.textContent = 'Select a Room';
-        roomScreenSubtitle.textContent = 'Choose a room to host your music session.';
+        roomScreenTitle.textContent = 'Create a Room';
+        roomScreenSubtitle.textContent = 'Give your room a name and start hosting.';
         roomHostPicker.style.display = 'block';
         roomSpeakerInput.style.display = 'none';
-        fetchRoomStatus();
+        // Pre-fill a suggested room ID for the host
+        if (hostRoomNameInput && !hostRoomNameInput.value) {
+            hostRoomNameInput.value = suggestRoomId();
+        }
+        if (hostRoomNameInput) hostRoomNameInput.focus();
     } else {
         roomScreenTitle.textContent = 'Join a Room';
-        roomScreenSubtitle.textContent = 'Enter the Room ID shared by the host.';
+        roomScreenSubtitle.textContent = 'Tap a room to join or enter the Room ID.';
         roomHostPicker.style.display = 'none';
         roomSpeakerInput.style.display = 'block';
-        roomIdInput.value = '';
-        roomIdInput.focus();
+        if (roomIdInput) roomIdInput.value = '';
+        // Fetch active rooms and start auto-refresh
+        fetchActiveRooms();
+        startRoomRefresh();
     }
+}
+
+function suggestRoomId() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let suffix = '';
+    for (let i = 0; i < 4; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
+    return `ROOM-${suffix}`;
 }
 
 function backToLobby() {
     role = null;
     currentRoomId = null;
+    stopRoomRefresh();
     roomScreen.classList.remove('active');
     lobbyScreen.classList.add('active');
 }
 
-async function fetchRoomStatus() {
-    try {
-        const response = await fetch(getApiUrl('/api/rooms'));
-        const data = await response.json();
-        renderRoomCards(data.rooms);
-    } catch (err) {
-        console.error('Failed to fetch rooms:', err);
-        roomCardsContainer.innerHTML = '<p style="color: #ef4444; text-align: center;">Could not load rooms. Is the server running?</p>';
+function startRoomRefresh() {
+    stopRoomRefresh();
+    roomRefreshInterval = setInterval(fetchActiveRooms, 5000);
+}
+
+function stopRoomRefresh() {
+    if (roomRefreshInterval) {
+        clearInterval(roomRefreshInterval);
+        roomRefreshInterval = null;
     }
 }
 
-function renderRoomCards(roomList) {
-    roomCardsContainer.innerHTML = '';
-    const icons = ['🎵', '🎶', '🎧'];
+// Host: Create a new room via API and then join it
+async function createAndJoinRoom() {
+    const desiredName = hostRoomNameInput ? hostRoomNameInput.value.trim().toUpperCase() : '';
     
-    roomList.forEach((room, i) => {
-        const isOccupied = room.hasHost;
-        const card = document.createElement('div');
-        card.className = 'room-card' + (isOccupied ? ' occupied' : '');
-        card.innerHTML = `
-            <div class="room-card-left">
-                <div class="room-card-icon">${icons[i] || '🎵'}</div>
-                <div class="room-card-info">
-                    <div class="room-card-id">${room.roomId}</div>
-                    <div class="room-card-detail">${room.speakerCount} speaker${room.speakerCount !== 1 ? 's' : ''} connected</div>
-                </div>
-            </div>
-            <span class="room-card-status ${isOccupied ? 'occupied' : 'available'}">${isOccupied ? 'Occupied' : 'Available'}</span>
-        `;
+    if (btnCreateRoom) btnCreateRoom.disabled = true;
+    if (btnCreateRoomText) btnCreateRoomText.textContent = 'Creating room...';
+    if (hostRoomErrorMsg) hostRoomErrorMsg.style.display = 'none';
+    
+    try {
+        const response = await fetch(getApiUrl('/api/rooms/create'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId: desiredName })
+        });
+        const data = await response.json();
         
-        if (!isOccupied) {
-            card.addEventListener('click', () => joinRoom(room.roomId));
+        if (!data.success) {
+            if (hostRoomErrorMsg) {
+                hostRoomErrorMsg.textContent = data.error || 'Could not create room. Try a different name.';
+                hostRoomErrorMsg.style.display = 'block';
+            }
+            return;
         }
         
-        roomCardsContainer.appendChild(card);
+        currentRoomId = data.roomId;
+        // Update the input to show the actual assigned room ID
+        if (hostRoomNameInput) hostRoomNameInput.value = data.roomId;
+        startSession();
+    } catch (err) {
+        console.error('Room creation failed:', err);
+        if (hostRoomErrorMsg) {
+            hostRoomErrorMsg.textContent = 'Network error. Is the server running?';
+            hostRoomErrorMsg.style.display = 'block';
+        }
+    } finally {
+        if (btnCreateRoom) btnCreateRoom.disabled = false;
+        if (btnCreateRoomText) btnCreateRoomText.textContent = '✦ Create Room & Start Hosting';
+    }
+}
+
+// Speaker: fetch and render active rooms list
+async function fetchActiveRooms() {
+    if (btnRefreshRooms) btnRefreshRooms.classList.add('spinning');
+    try {
+        const response = await fetch(getApiUrl('/api/rooms'));
+        const data = await response.json();
+        renderActiveRooms(data.rooms);
+    } catch (err) {
+        console.error('Failed to fetch active rooms:', err);
+        if (activeRoomsList) {
+            activeRoomsList.innerHTML = '<div class="rooms-loading-msg" style="color:#ef4444;">Could not load rooms. Is the server running?</div>';
+        }
+    } finally {
+        if (btnRefreshRooms) {
+            btnRefreshRooms.classList.remove('spinning');
+        }
+    }
+}
+
+const ROOM_ICONS = ['🎵', '🎶', '🎧', '🎸', '🎹', '🎺', '🎻', '🥁'];
+
+function renderActiveRooms(roomList) {
+    if (!activeRoomsList) return;
+    activeRoomsList.innerHTML = '';
+    
+    if (!roomList || roomList.length === 0) {
+        activeRoomsList.innerHTML = '<div class="rooms-loading-msg">No active rooms found.<br>Ask the host to create a room first.</div>';
+        return;
+    }
+    
+    roomList.forEach((room, i) => {
+        const modeLabel = room.mode === 'youtube' ? '📺 YouTube' : room.mode === 'mic' ? '🎤 Mic' : '🎵 Audio';
+        const statusLabel = room.isPlaying ? '▶ Playing' : '⏸ Ready';
+        const card = document.createElement('div');
+        card.className = 'active-room-card';
+        card.innerHTML = `
+            <div class="active-room-card-left">
+                <div class="active-room-icon">${ROOM_ICONS[i % ROOM_ICONS.length]}</div>
+                <div class="active-room-info">
+                    <div class="active-room-id">${escapeHtml(room.roomId)}</div>
+                    <div class="active-room-detail">${room.speakerCount} listener${room.speakerCount !== 1 ? 's' : ''} · ${statusLabel} · ${modeLabel}</div>
+                </div>
+            </div>
+            <span class="active-room-join-badge">▶ Join</span>
+        `;
+        card.addEventListener('click', () => {
+            stopRoomRefresh();
+            joinRoom(room.roomId);
+        });
+        activeRoomsList.appendChild(card);
     });
 }
 
 function connectSpeakerToRoom() {
+    if (!roomIdInput) return;
     const roomId = roomIdInput.value.trim().toUpperCase();
     if (!roomId) {
-        roomErrorMsg.textContent = 'Please enter a Room ID.';
-        roomErrorMsg.style.display = 'block';
+        if (speakerRoomErrorMsg) {
+            speakerRoomErrorMsg.textContent = 'Please enter a Room ID.';
+            speakerRoomErrorMsg.style.display = 'block';
+        }
         return;
     }
-    roomErrorMsg.style.display = 'none';
+    if (speakerRoomErrorMsg) speakerRoomErrorMsg.style.display = 'none';
+    stopRoomRefresh();
     joinRoom(roomId);
 }
 
 function joinRoom(roomId) {
     currentRoomId = roomId;
+    stopRoomRefresh();
     startSession();
 }
 
@@ -551,6 +662,7 @@ function leaveSession() {
     currentRoomId = null;
     stopAudio();
     stopVisualizer();
+    stopRoomRefresh();
     
     hasUserGesture = false;
     pendingYoutubeState = null;
@@ -565,6 +677,9 @@ function leaveSession() {
         } catch(e) {}
     }
     activeVideoId = null;
+    
+    // Reset host room name input for next session
+    if (hostRoomNameInput) hostRoomNameInput.value = '';
     
     hostScreen.classList.remove('active');
     speakerScreen.classList.remove('active');
@@ -994,16 +1109,21 @@ function handleServerMessage(data) {
 function handleServerError(message) {
     console.error('[Server Error]', message);
     
-    // If we're on the room screen or just joined, show error
+    // If we're on the room screen, show the relevant error div
     if (roomScreen.classList.contains('active')) {
-        roomErrorMsg.textContent = message;
-        roomErrorMsg.style.display = 'block';
+        // Show error in whichever section is currently visible
+        const errorEl = (role === 'host') ? hostRoomErrorMsg : speakerRoomErrorMsg;
+        if (errorEl) {
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+        }
     } else {
         // If already in host/speaker screen, show alert and go back
         alert(message);
         leaveSession();
     }
 }
+
 
 function handleStateUpdate(state) {
     const serverPlaying = state.isPlaying;

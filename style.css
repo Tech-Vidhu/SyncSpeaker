@@ -935,3 +935,203 @@ p.subtitle {
     color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.3);
 }
+
+/* =============================================
+   CREATE ROOM FORM (Host)
+   ============================================= */
+.create-room-form {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
+    border: 1px solid rgba(6, 182, 212, 0.15);
+    border-radius: 18px;
+    padding: 1.5rem;
+}
+
+.create-room-input {
+    font-size: 1.25rem !important;
+    font-weight: 700 !important;
+    text-align: center;
+    letter-spacing: 2px;
+    border-color: rgba(6, 182, 212, 0.25) !important;
+    background: rgba(0, 0, 0, 0.4) !important;
+    transition: all 0.25s ease;
+}
+
+.create-room-input:focus {
+    border-color: var(--glow-cyan) !important;
+    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12);
+}
+
+/* =============================================
+   ACTIVE ROOMS BROWSER (Speaker)
+   ============================================= */
+.active-rooms-section {
+    margin-bottom: 0;
+}
+
+.active-rooms-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+
+.active-rooms-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--card-border);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.75rem;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+    background: rgba(6, 182, 212, 0.1);
+    border-color: rgba(6, 182, 212, 0.3);
+    color: var(--glow-cyan);
+}
+
+.refresh-btn.spinning svg {
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.active-rooms-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-right: 0.1rem;
+    margin-bottom: 0.5rem;
+}
+
+.rooms-loading-msg {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 1.25rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 10px;
+    border: 1px dashed var(--card-border);
+}
+
+.active-room-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem 1.1rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(6, 182, 212, 0.15);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.22s ease;
+    gap: 0.75rem;
+}
+
+.active-room-card:hover {
+    background: rgba(6, 182, 212, 0.08);
+    border-color: rgba(6, 182, 212, 0.4);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(6, 182, 212, 0.12);
+}
+
+.active-room-card-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.active-room-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    flex-shrink: 0;
+}
+
+.active-room-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.active-room-id {
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 1px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.active-room-detail {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.1rem;
+    white-space: nowrap;
+}
+
+.active-room-join-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.15));
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    color: var(--glow-cyan);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.2rem 0.55rem;
+    border-radius: 20px;
+    flex-shrink: 0;
+    letter-spacing: 0.3px;
+    transition: all 0.2s;
+}
+
+.active-room-card:hover .active-room-join-badge {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.3), rgba(139, 92, 246, 0.3));
+    border-color: var(--glow-cyan);
+}
+
+/* Divider between active rooms list and manual input */
+.room-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+}
+
+.room-divider::before,
+.room-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--card-border);
+}
+

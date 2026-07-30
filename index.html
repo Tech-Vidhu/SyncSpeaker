@@ -95,25 +95,57 @@
 
         <!-- ROOM SELECTION SCREEN -->
         <section id="room-screen" class="screen glass-card">
-            <h2 id="room-screen-title">Select a Room</h2>
-            <p id="room-screen-subtitle" class="subtitle">Choose a room to host your music session.</p>
+            <h2 id="room-screen-title">Create a Room</h2>
+            <p id="room-screen-subtitle" class="subtitle">Give your room a name and start hosting.</p>
 
-            <!-- Host: Room Cards -->
+            <!-- Host: Create Room Form -->
             <div id="room-host-picker" style="display: none;">
-                <div id="room-cards-container" class="room-cards">
-                    <!-- Filled dynamically by JS -->
+                <div class="create-room-form">
+                    <div class="name-input-group" style="margin-bottom: 1.25rem;">
+                        <label for="host-room-name-input">Room Name</label>
+                        <input type="text" id="host-room-name-input" class="text-input create-room-input" placeholder="e.g., PARTY-2026" style="text-transform: uppercase; letter-spacing: 1.5px; text-align: center; font-weight: 700; font-size: 1.2rem;">
+                    </div>
+                    <p style="font-size: 0.78rem; color: var(--text-secondary); text-align: center; margin-bottom: 1.25rem; line-height: 1.5;">Leave blank to auto-generate a unique Room ID. Receivers will browse and join your room from the app.</p>
+                    <button id="btn-create-room" class="btn-primary" style="width: 100%; padding: 0.85rem; font-size: 1rem; font-weight: 600;">
+                        <span id="btn-create-room-text">✦ Create Room & Start Hosting</span>
+                    </button>
                 </div>
-                <p style="font-size: 0.75rem; color: var(--text-secondary); text-align: center; margin-top: 1rem;">Only one host per room. Green = available, Red = occupied.</p>
+                <div id="host-room-error-msg" style="color: #ef4444; font-size: 0.85rem; text-align: center; margin-top: 0.75rem; display: none;"></div>
             </div>
 
-            <!-- Speaker: Room ID Input -->
+            <!-- Speaker: Browse Active Rooms + Manual Input -->
             <div id="room-speaker-input" style="display: none;">
-                <div class="name-input-group" style="margin-bottom: 1.25rem;">
-                    <label for="room-id-input">Room ID</label>
-                    <input type="text" id="room-id-input" class="text-input" placeholder="e.g., SYNC-101" style="text-transform: uppercase; letter-spacing: 1px; text-align: center; font-weight: 600; font-size: 1.1rem;">
+                <!-- Active Rooms Browser -->
+                <div class="active-rooms-section">
+                    <div class="active-rooms-header">
+                        <span class="active-rooms-label">🔴 Active Rooms</span>
+                        <button id="btn-refresh-rooms" class="refresh-btn" title="Refresh room list">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                <path d="M21 3v5h-5"/>
+                                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                                <path d="M8 16H3v5"/>
+                            </svg>
+                            Refresh
+                        </button>
+                    </div>
+                    <div id="active-rooms-list" class="active-rooms-list">
+                        <div class="rooms-loading-msg">Scanning for active rooms...</div>
+                    </div>
                 </div>
-                <button id="btn-room-connect" class="btn-primary" style="width: 100%; padding: 0.8rem; font-size: 1rem;">Connect to Room</button>
-                <div id="room-error-msg" style="color: #ef4444; font-size: 0.85rem; text-align: center; margin-top: 0.75rem; display: none;"></div>
+
+                <!-- Divider -->
+                <div class="room-divider">
+                    <span>or enter Room ID manually</span>
+                </div>
+
+                <!-- Manual Room ID Input -->
+                <div class="name-input-group" style="margin-bottom: 0.75rem;">
+                    <label for="room-id-input">Room ID</label>
+                    <input type="text" id="room-id-input" class="text-input" placeholder="e.g., ROOM-AB12" style="text-transform: uppercase; letter-spacing: 1px; text-align: center; font-weight: 600; font-size: 1.1rem;">
+                </div>
+                <button id="btn-room-connect" class="btn-secondary" style="width: 100%; padding: 0.75rem; font-size: 0.95rem;">Connect to Room</button>
+                <div id="speaker-room-error-msg" style="color: #ef4444; font-size: 0.85rem; text-align: center; margin-top: 0.75rem; display: none;"></div>
             </div>
 
             <button id="btn-room-back" class="btn-secondary" style="margin-top: 1.25rem;">
