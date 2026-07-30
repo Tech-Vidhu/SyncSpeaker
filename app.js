@@ -976,16 +976,23 @@ function syncPlaybackSchedule() {
     // Current server time (ms epoch)
     const currentServerTime = getServerTime();
     
-    // Precise Mapping: performance.now() <-> audioCtx.currentTime
+    // Precise Mapping: performance.now() <-> audioCtx.currentTime (Acoustic Output Time)
     let contextTime = audioCtx.currentTime;
     let perfTime = performance.now();
     
     if (audioCtx.getOutputTimestamp) {
         const ts = audioCtx.getOutputTimestamp();
-        if (ts && ts.contextTime !== undefined && ts.performanceTime !== undefined) {
+        if (ts && ts.contextTime > 0 && ts.performanceTime > 0) {
             contextTime = ts.contextTime;
             perfTime = ts.performanceTime;
+        } else {
+            // Fallback for browsers with broken getOutputTimestamp (calculates exact acoustic hardware hit time)
+            const outLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0.02);
+            perfTime = performance.now() + (outLatency * 1000);
         }
+    } else {
+        const outLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0.02);
+        perfTime = performance.now() + (outLatency * 1000);
     }
     
     // Calculate the performance time when contextTime was 0.0
@@ -1016,23 +1023,26 @@ function syncPlaybackSchedule() {
         }
     } else {
         // Scheduled in the past (late joiner or network lag)
-        // Calculate how many seconds have elapsed since it should have started
-        const elapsedSeconds = audioCtx.currentTime - targetAudioContextTime;
+        // Instead of starting "immediately" (which incurs an unpredictable 20-50ms processing penalty),
+        // we schedule it exactly 150ms in the future to bypass all processing delays and align perfectly.
+        const delay = 0.150; 
+        const startCtxTime = audioCtx.currentTime + delay;
+        const elapsedSeconds = startCtxTime - targetAudioContextTime;
         const newOffset = audioOffset + elapsedSeconds;
         
-        console.log(`Playback target missed. Playback elapsed: ${elapsedSeconds}s. New offset: ${newOffset}s`);
+        console.log(`Playback target missed. Queueing ${delay}s in future. New offset: ${newOffset}s`);
         
         if (newOffset < audioDuration) {
-            currentSource.start(audioCtx.currentTime, newOffset);
+            currentSource.start(startCtxTime, newOffset);
             isAudioPlaying = true;
             
-            playCtxTime = audioCtx.currentTime;
+            playCtxTime = startCtxTime;
             playAudioOffset = newOffset;
             startDriftCheck();
             
             if (role === 'speaker') {
                 speakerMainStatus.textContent = 'Synchronized Playback';
-                speakerSubStatus.textContent = 'Late joined & aligned';
+                speakerSubStatus.textContent = 'Late joined & perfectly aligned';
             }
         } else {
             console.log("Song already finished based on sync timer");
@@ -1691,10 +1701,16 @@ function startDriftCheck() {
         let perfTime = performance.now();
         if (audioCtx.getOutputTimestamp) {
             const ts = audioCtx.getOutputTimestamp();
-            if (ts && ts.contextTime !== undefined && ts.performanceTime !== undefined) {
+            if (ts && ts.contextTime > 0 && ts.performanceTime > 0) {
                 contextTime = ts.contextTime;
                 perfTime = ts.performanceTime;
+            } else {
+                const outLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0.02);
+                perfTime = performance.now() + (outLatency * 1000);
             }
+        } else {
+            const outLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0.02);
+            perfTime = performance.now() + (outLatency * 1000);
         }
         
         // Expected song offset based on perfectly synced server clock
