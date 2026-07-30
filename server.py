@@ -52,7 +52,8 @@ def get_or_create_room(room_id):
         if room_id not in rooms:
             rooms[room_id] = {
                 "state": make_default_state(),
-                "clients": {}
+                "clients": {},
+                "has_had_listeners": False
             }
         return rooms[room_id]
 
@@ -396,6 +397,8 @@ def ws_handler(websocket):
                 # Add to the new room
                 with rooms_lock:
                     rooms[room_id]["clients"][websocket] = {"name": name, "role": role}
+                    if role == "speaker":
+                        rooms[room_id]["has_had_listeners"] = True
                 client_rooms[websocket] = room_id
                 
                 print(f"[WS] Device '{name}' joined room {room_id} as {role}")
@@ -446,6 +449,17 @@ def ws_handler(websocket):
                             room["state"]["playTime"] = int(time.time() * 1000) + 400
                         else:
                             room["state"]["playTime"] = 0
+                            
+                    elif action == "close_room":
+                        # Manual Close Room button triggered by host
+                        clients_to_kick = list(rooms[room_id]["clients"].keys())
+                        for client in clients_to_kick:
+                            safe_send(client, json.dumps({"type": "room_closed"}))
+                            
+                        # Delete the room
+                        del rooms[room_id]
+                        print(f"[WS] Host manually closed room {room_id}. Kicking all clients.")
+                        continue # Room deleted, don't broadcast state
                 
                 broadcast_state(room_id)
                 
@@ -464,17 +478,35 @@ def ws_handler(websocket):
             with rooms_lock:
                 was_host = rooms[room_id]["clients"].get(websocket, {}).get("role") == "host"
                 rooms[room_id]["clients"].pop(websocket, None)
+                
+                # Check remaining clients
+                remaining_listeners = sum(1 for c in rooms[room_id]["clients"].values() if c["role"] == "speaker")
+                has_had_listeners = rooms[room_id].get("has_had_listeners", False)
+                
             print(f"[WS] Client disconnected from room {room_id}. Room clients: {len(rooms[room_id]['clients'])}")
             
+            # Auto-close logic: Close if Host leaves, OR if all listeners leave (and the room was active)
+            should_close = False
+            close_reason = ""
+            
             if was_host:
+                should_close = True
+                close_reason = "Host disconnected."
+            elif has_had_listeners and remaining_listeners == 0:
+                should_close = True
+                close_reason = "All listeners disconnected."
+                
+            if should_close:
                 with rooms_lock:
                     if room_id in rooms:
-                        rooms[room_id]["state"] = make_default_state()
-                print(f"[WS] Host left room {room_id}. Room state reset.")
-                broadcast_state(room_id)
-            
-            broadcast_devices(room_id)
-            cleanup_empty_room(room_id)
+                        clients_to_kick = list(rooms[room_id]["clients"].keys())
+                        for client in clients_to_kick:
+                            safe_send(client, json.dumps({"type": "room_closed", "reason": close_reason}))
+                        del rooms[room_id]
+                print(f"[WS] Auto-closing room {room_id}: {close_reason}")
+            else:
+                broadcast_devices(room_id)
+                cleanup_empty_room(room_id)
         else:
             print(f"[WS] Unregistered client disconnected.")
 

@@ -122,7 +122,7 @@ const speakerScreen = document.getElementById('speaker-screen');
 
 const btnSelectHost = document.getElementById('btn-select-host');
 const btnSelectSpeaker = document.getElementById('btn-select-speaker');
-const btnHostBack = document.getElementById('btn-host-back');
+const btnHostCloseRoom = document.getElementById('btn-host-close-room');
 const btnSpeakerBack = document.getElementById('btn-speaker-back');
 const btnRoomBack = document.getElementById('btn-room-back');
 const deviceNameInput = document.getElementById('device-name');
@@ -206,7 +206,16 @@ window.addEventListener('DOMContentLoaded', () => {
     // Event Listeners
     btnSelectHost.addEventListener('click', () => showRoomScreen('host'));
     btnSelectSpeaker.addEventListener('click', () => showRoomScreen('speaker'));
-    btnHostBack.addEventListener('click', leaveSession);
+    if (btnHostCloseRoom) {
+        btnHostCloseRoom.addEventListener('click', () => {
+            if (confirm('Are you sure you want to close this room? All listeners will be disconnected.')) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(jsonMessage('control', { action: 'close_room' }));
+                }
+                leaveSession();
+            }
+        });
+    }
     btnSpeakerBack.addEventListener('click', leaveSession);
 
     // Auto-join if backend and room parameters are present in URL
@@ -1137,6 +1146,10 @@ function handleServerMessage(data) {
         handleServerError(data.message);
     } else if (type === 'joined') {
         console.log(`[Room] Successfully joined room ${data.roomId} as ${data.role}`);
+    } else if (type === 'room_closed') {
+        const reason = data.reason || 'The room has been closed by the host.';
+        alert(reason);
+        leaveSession();
     }
 }
 
