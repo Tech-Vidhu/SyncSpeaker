@@ -70,8 +70,8 @@ function getApiUrl(path) {
     }
     
     if (window.location.hostname === 'sync-speaker.vercel.app') {
-        // If loaded from Vercel statically without parameters, assume local Flask is on localhost
-        return `http://localhost:5000${path}`;
+        // If loaded from Vercel statically without parameters, assume cloud backend
+        return `https://syncspeaker-backend.onrender.com${path}`;
     }
     
     // Running on a cloud host (Render, etc.) — use same origin
@@ -406,10 +406,10 @@ function connectWebSocket() {
         wsHost = 'localhost';
         wsPort = ':5000';
     } else if (window.location.hostname === 'sync-speaker.vercel.app') {
-        // Fallback for Vercel without backend param
-        wsProtocol = 'ws:';
-        wsHost = 'localhost';
-        wsPort = ':5000';
+        // Fallback for Vercel without backend param - connect to Render backend
+        wsProtocol = 'wss:';
+        wsHost = 'syncspeaker-backend.onrender.com';
+        wsPort = '';
     } else if (!isLocal) {
         // Cloud deployment (Render, etc.) — connect to same host over wss://
         // The Flask server is the same origin, WebSocket goes to same host
