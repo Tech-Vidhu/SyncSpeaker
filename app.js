@@ -916,6 +916,11 @@ async function loadAudioBuffer(url) {
                 timeDuration.textContent = formatTime(audioDuration);
                 timeCurrent.textContent = formatTime(0);
                 progressFill.style.width = '0%';
+                
+                // Automatically start playing the newly loaded track
+                if (!isAudioPlaying) {
+                    togglePlayback();
+                }
             } else if (role === 'speaker') {
                 speakerMainStatus.textContent = 'Synchronized & Buffered';
                 speakerSubStatus.textContent = 'Ready to play';
