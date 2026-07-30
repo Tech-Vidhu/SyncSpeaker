@@ -1737,6 +1737,14 @@ function startDriftCheck() {
         
         const drift = expectedOffset - actualOffset; // in seconds
         
+        // Massive Drift Check: If drift exceeds 100ms, the PID controller would take too long to catch up.
+        // Instead, perform a "Hard Sync" to instantly match the exact playback time of the room.
+        if (Math.abs(drift) > 0.100) {
+            console.log(`Massive drift detected (${drift.toFixed(3)}s). Forcing hard sync.`);
+            syncPlaybackSchedule();
+            return;
+        }
+        
         // PI Controller to calculate playback rate
         const Kp = 0.05;  // Proportional gain (5% correction per second of drift)
         const Ki = 0.001; // Integral gain
