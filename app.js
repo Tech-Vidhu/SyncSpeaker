@@ -107,13 +107,9 @@ let visualizerAnimationId = null;
 
 // Clock Sync (NTP) State
 let serverOffset = 0;      // Server time - Client time (ms)
-let serverOffsetsHistory = []; // Slide window of offsets
-let rttHistory = [];
 const SYNC_INTERVAL = 3000; // sync clock every 3s
 let syncTimer = null;
-
-// Manual Calibration (ms)
-let manualCalibrationMs = 0;
+let pidIntegral = 0; // PID controller state for drift correction
 
 // Host Player Progress Update Timer
 let progressInterval = null;
@@ -182,10 +178,7 @@ const speakerPingDisplay = document.getElementById('speaker-ping-display');
 const speakerOffsetDisplay = document.getElementById('speaker-offset-display');
 const speakerTrackDisplay = document.getElementById('speaker-track-display');
 
-const delaySlider = document.getElementById('delay-slider');
-const delayVal = document.getElementById('delay-val');
-const btnDelayMinus = document.getElementById('btn-delay-minus');
-const btnDelayPlus = document.getElementById('btn-delay-plus');
+
 
 // YouTube Source Elements
 const tabFile = document.getElementById('tab-file');
@@ -209,10 +202,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     deviceNameInput.value = deviceName;
 
-    // Load Manual Calibration
-    manualCalibrationMs = parseInt(localStorage.getItem('calibration_ms')) || 0;
-    delaySlider.value = manualCalibrationMs;
-    updateCalibrationUI();
 
     // Event Listeners
     btnSelectHost.addEventListener('click', () => showRoomScreen('host'));
@@ -306,27 +295,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') performYTSearch();
     });
 
-    // Calibration Slider events
-    delaySlider.addEventListener('input', () => {
-        manualCalibrationMs = parseInt(delaySlider.value);
-        localStorage.setItem('calibration_ms', manualCalibrationMs);
-        updateCalibrationUI();
-        
-        // If speaker is playing, trigger a re-sync to apply calibration immediately
-        if (role === 'speaker' && isAudioPlaying) {
-            syncPlaybackSchedule();
-        }
-    });
 
-    btnDelayMinus.addEventListener('click', () => {
-        delaySlider.value = parseInt(delaySlider.value) - 5;
-        delaySlider.dispatchEvent(new Event('input'));
-    });
-
-    btnDelayPlus.addEventListener('click', () => {
-        delaySlider.value = parseInt(delaySlider.value) + 5;
-        delaySlider.dispatchEvent(new Event('input'));
-    });
 
     // QR Code Mode Switcher
     if (btnQrWifi && btnQrVercel) {
@@ -356,12 +325,6 @@ window.addEventListener('DOMContentLoaded', () => {
     updateConnectionStatus('connecting');
     connectWebSocket();
 });
-
-// Update manual delay calibration UI labels
-function updateCalibrationUI() {
-    const sign = manualCalibrationMs >= 0 ? '+' : '';
-    delayVal.textContent = `${sign}${manualCalibrationMs} ms`;
-}
 
 // Websocket connection
 function connectWebSocket() {
@@ -801,16 +764,20 @@ function stopClockSync() {
 function sendPing() {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     
+    // We use performance.now() because it is monotonic and not affected by system clock jitter
     ws.send(jsonMessage('ping', {
-        clientTime: Date.now()
+        clientTime: performance.now()
     }));
 }
 
+// Statistical filtering variables
+let pingHistory = [];
+
 function handlePong(data) {
-    const t3 = Date.now(); // Client receive time
+    const t3 = performance.now(); // Client receive time (high precision)
     const t0 = data.clientTime;
-    const t1 = data.serverRecvTime;
-    const t2 = data.serverSendTime;
+    const t1 = data.serverRecvTime; // from server (Date.now() essentially)
+    const t2 = data.serverSendTime; // from server
     
     // Round trip time (network latency back and forth)
     const rtt = (t3 - t0) - (t2 - t1);
@@ -819,31 +786,34 @@ function handlePong(data) {
     // T_server = T_client + offset
     const offset = ((t1 - t0) + (t2 - t3)) / 2;
     
-    // Keep a sliding window of the last 10 points
-    serverOffsetsHistory.push(offset);
-    rttHistory.push(rtt);
-    if (serverOffsetsHistory.length > 10) {
-        serverOffsetsHistory.shift();
-        rttHistory.shift();
+    // Maintain a rolling history of the last 30 pings
+    pingHistory.push({ rtt, offset });
+    if (pingHistory.length > 30) {
+        pingHistory.shift();
     }
     
-    // Filter measurements: select the offset that has the lowest RTT (most stable network route)
-    let bestIdx = 0;
-    let minRtt = rttHistory[0];
-    for (let i = 1; i < rttHistory.length; i++) {
-        if (rttHistory[i] < minRtt) {
-            minRtt = rttHistory[i];
-            bestIdx = i;
-        }
+    // We only want the most stable network routes to calculate our offset
+    // Sort by RTT (lowest latency first)
+    const sortedPings = [...pingHistory].sort((a, b) => a.rtt - b.rtt);
+    
+    // Take the top 20% (or at least 1 if history is small)
+    const numToAverage = Math.max(1, Math.floor(sortedPings.length * 0.20));
+    const bestPings = sortedPings.slice(0, numToAverage);
+    
+    // Average the offsets of the best pings
+    let offsetSum = 0;
+    for (const p of bestPings) {
+        offsetSum += p.offset;
     }
     
-    serverOffset = serverOffsetsHistory[bestIdx];
+    serverOffset = offsetSum / numToAverage;
+    const minRtt = sortedPings[0].rtt;
     
     // Update labels in speaker screen
     if (role === 'speaker') {
         speakerPingDisplay.textContent = `${Math.round(minRtt)} ms`;
         const sign = serverOffset >= 0 ? '+' : '';
-        speakerOffsetDisplay.textContent = `${sign}${Math.round(serverOffset)} ms`;
+        speakerOffsetDisplay.textContent = `${sign}${serverOffset.toFixed(1)} ms`;
         
         if (speakerMainStatus.textContent === 'Connecting...') {
             speakerMainStatus.textContent = 'Synchronized';
@@ -852,9 +822,9 @@ function handlePong(data) {
     }
 }
 
-// Convert local client epoch time to estimated server epoch time
+// Convert local client high-precision time to estimated server epoch time
 function getServerTime() {
-    return Date.now() + serverOffset;
+    return performance.now() + serverOffset;
 }
 
 // Audio System Engine
@@ -995,26 +965,33 @@ function syncPlaybackSchedule() {
     currentSource.connect(analyser);
     analyser.connect(audioCtx.destination);
     
-    // Math logic to calculate play start relative to server epoch time
-    // Server Play Time (ms epoch)
+    // Target Server Play Time (ms epoch)
     const targetServerPlayTime = playTime;
     
     // Current server time (ms epoch)
     const currentServerTime = getServerTime();
     
-    // Apply manual speaker latency calibration (in milliseconds)
-    const calibrationAdjust = (role === 'speaker') ? manualCalibrationMs : 0;
+    // Precise Mapping: performance.now() <-> audioCtx.currentTime
+    let contextTime = audioCtx.currentTime;
+    let perfTime = performance.now();
     
-    // Calculate start time in AudioContext coordinate system
-    // We compute the relationship: Date.now() <-> audioCtx.currentTime
-    const audioCtxEpochBase = Date.now() - (audioCtx.currentTime * 1000);
+    if (audioCtx.getOutputTimestamp) {
+        const ts = audioCtx.getOutputTimestamp();
+        if (ts && ts.contextTime !== undefined && ts.performanceTime !== undefined) {
+            contextTime = ts.contextTime;
+            perfTime = ts.performanceTime;
+        }
+    }
     
-    // Target client epoch time (ms) to start playing
+    // Calculate the performance time when contextTime was 0.0
+    const audioCtxPerfBase = perfTime - (contextTime * 1000);
+    
+    // Target client high-precision time (ms) to start playing
     // (If server time is T_play, client time is T_play - serverOffset)
-    const targetClientPlayTime = targetServerPlayTime - serverOffset + calibrationAdjust;
+    const targetClientPlayTime = targetServerPlayTime - serverOffset;
     
     // Target AudioContext timestamp (seconds)
-    const targetAudioContextTime = (targetClientPlayTime - audioCtxEpochBase) / 1000;
+    const targetAudioContextTime = (targetClientPlayTime - audioCtxPerfBase) / 1000;
     
     console.log(`Scheduling playback: Target context time = ${targetAudioContextTime}, Current = ${audioCtx.currentTime}`);
     
@@ -1684,9 +1661,7 @@ function handleIncomingPCM(arrayBuffer) {
         targetTime = currentTime + networkJitterDelay;
     }
     
-    // Apply manual delay calibration (ms)
-    const calibrationAdjust = manualCalibrationMs / 1000.0;
-    const scheduledTime = targetTime + calibrationAdjust;
+    const scheduledTime = targetTime;
     
     if (scheduledTime > currentTime) {
         source.start(scheduledTime);
@@ -1697,41 +1672,64 @@ function handleIncomingPCM(arrayBuffer) {
     nextPCMPlayTime = targetTime + buffer.duration;
 }
 
-// Clock drift adjustment interval check (Sonos/Chromecast standard)
+// Advanced PID Drift Controller (Sonos/Chromecast standard)
 function startDriftCheck() {
     if (driftInterval) clearInterval(driftInterval);
+    
+    pidIntegral = 0; // Reset integral state
     
     driftInterval = setInterval(() => {
         if (!isAudioPlaying || !currentSource || !audioCtx || audioUrl === 'MIC_STREAM') return;
         
-        // Expected song offset based on server play clock
-        const serverPlayElapsed = getServerTime() - playTime;
+        // Precise Mapping
+        let contextTime = audioCtx.currentTime;
+        let perfTime = performance.now();
+        if (audioCtx.getOutputTimestamp) {
+            const ts = audioCtx.getOutputTimestamp();
+            if (ts && ts.contextTime !== undefined && ts.performanceTime !== undefined) {
+                contextTime = ts.contextTime;
+                perfTime = ts.performanceTime;
+            }
+        }
+        
+        // Expected song offset based on perfectly synced server clock
+        const currentServerTime = perfTime + serverOffset;
+        const serverPlayElapsed = currentServerTime - playTime;
         const expectedOffset = playAudioOffset + (serverPlayElapsed / 1000.0);
         
-        // Actual song offset based on local AudioContext elapsed clock
-        const ctxElapsed = audioCtx.currentTime - playCtxTime;
+        // Actual song offset based on real hardware playback progress
+        const ctxElapsed = contextTime - playCtxTime;
         const actualOffset = playAudioOffset + ctxElapsed;
         
         const drift = expectedOffset - actualOffset; // in seconds
         
-        // If drift is significant (more than 15ms), perform micro-adjustments to playbackRate
-        if (Math.abs(drift) > 0.015) { 
-            console.log(`[Drift Detect] Out of sync by ${Math.round(drift * 1000)} ms. Adjusting playback rate.`);
-            if (drift > 0) {
-                // Client is lagging, speed up slightly
-                currentSource.playbackRate.setValueAtTime(1.008, audioCtx.currentTime);
-            } else {
-                // Client is leading, slow down slightly
-                currentSource.playbackRate.setValueAtTime(0.992, audioCtx.currentTime);
-            }
-        } else if (Math.abs(drift) < 0.005) {
+        // PI Controller to calculate playback rate
+        const Kp = 0.05;  // Proportional gain (5% correction per second of drift)
+        const Ki = 0.001; // Integral gain
+        
+        pidIntegral += drift;
+        
+        // Cap the integral to prevent windup
+        if (pidIntegral > 0.5) pidIntegral = 0.5;
+        if (pidIntegral < -0.5) pidIntegral = -0.5;
+        
+        let newRate = 1.0 + (drift * Kp) + (pidIntegral * Ki);
+        
+        // Hard limits on pitch shift to prevent noticeable warble (max 0.25% shift)
+        if (newRate > 1.0025) newRate = 1.0025;
+        if (newRate < 0.9975) newRate = 0.9975;
+        
+        // If drift is significant (>1ms), perform micro-adjustments to playbackRate
+        if (Math.abs(drift) > 0.001) { 
+            currentSource.playbackRate.setValueAtTime(newRate, audioCtx.currentTime);
+        } else if (Math.abs(drift) < 0.001) {
             // Perfect sync restored, return to normal speed
             if (currentSource.playbackRate.value !== 1.0) {
                 currentSource.playbackRate.setValueAtTime(1.0, audioCtx.currentTime);
-                console.log(`[Drift Recovered] Perfect sync restored.`);
+                pidIntegral = 0;
             }
         }
-    }, 1500);
+    }, 1000); // Check every second for micro-adjustments
 }
 
 function stopDriftCheck() {
