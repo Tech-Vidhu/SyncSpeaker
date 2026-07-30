@@ -58,6 +58,12 @@ function getApiUrl(path) {
                     window.location.hostname === '127.0.0.1' || 
                     /^[0-9.]+$/.test(window.location.hostname);
                     
+    const isFile = window.location.protocol === 'file:' || !window.location.hostname;
+
+    if (isFile) {
+        return `http://localhost:5000${path}`;
+    }
+                    
     if (isLocal) {
         // Running locally — use relative path (same origin)
         return path;
@@ -369,6 +375,8 @@ function connectWebSocket() {
     const isLocal = window.location.hostname === 'localhost' ||
                     window.location.hostname === '127.0.0.1' ||
                     /^[0-9.]+$/.test(window.location.hostname);
+                    
+    const isFile = window.location.protocol === 'file:' || !window.location.hostname;
 
     if (backendParam) {
         // Explicit backend override (e.g. ?backend=192.168.1.5:5000 or ?backend=my-app.onrender.com)
@@ -388,6 +396,10 @@ function connectWebSocket() {
             wsHost = cleanedHost;
             wsPort = '';
         }
+    } else if (isFile) {
+        wsProtocol = 'ws:';
+        wsHost = 'localhost';
+        wsPort = ':5000';
     } else if (!isLocal) {
         // Cloud deployment (Render, etc.) — connect to same host over wss://
         // The Flask server is the same origin, WebSocket goes to same host
