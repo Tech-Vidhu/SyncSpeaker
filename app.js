@@ -69,7 +69,12 @@ function getApiUrl(path) {
         return path;
     }
     
-    // Running on a cloud host (Render, Vercel, etc.) — use same origin
+    if (window.location.hostname === 'sync-speaker.vercel.app') {
+        // If loaded from Vercel statically without parameters, assume local Flask is on localhost
+        return `http://localhost:5000${path}`;
+    }
+    
+    // Running on a cloud host (Render, etc.) — use same origin
     // This avoids Mixed Content: the page is HTTPS and so is the API
     return `${window.location.origin}${path}`;
 }
@@ -397,6 +402,11 @@ function connectWebSocket() {
             wsPort = '';
         }
     } else if (isFile) {
+        wsProtocol = 'ws:';
+        wsHost = 'localhost';
+        wsPort = ':5000';
+    } else if (window.location.hostname === 'sync-speaker.vercel.app') {
+        // Fallback for Vercel without backend param
         wsProtocol = 'ws:';
         wsHost = 'localhost';
         wsPort = ':5000';
