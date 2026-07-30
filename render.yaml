@@ -2,8 +2,11 @@ services:
   - type: web
     name: syncspeaker-backend
     runtime: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python server.py
     envVars:
       - key: PYTHONUNBUFFERED
+        value: "true"
+      - key: RENDER
         value: "true"

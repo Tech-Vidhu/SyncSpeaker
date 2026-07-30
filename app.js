@@ -48,7 +48,7 @@ function getApiUrl(path) {
             const port = hasPort ? cleanedHost.split(':')[1] : '5000';
             return `http://${hostOnly}:${port}${path}`;
         } else {
-            // It's a domain name (cloud server or tunnel like cloudflare/ngrok/render)
+            // Domain name (Render / ngrok / cloudflare tunnel)
             const proto = window.location.protocol === 'https:' ? 'https:' : 'http:';
             return `${proto}//${cleanedHost}${path}`;
         }
@@ -59,11 +59,13 @@ function getApiUrl(path) {
                     /^[0-9.]+$/.test(window.location.hostname);
                     
     if (isLocal) {
+        // Running locally — use relative path (same origin)
         return path;
     }
     
-    // If loaded from Vercel statically without parameters, assume local Flask is on localhost
-    return `http://localhost:5000${path}`;
+    // Running on a cloud host (Render, Vercel, etc.) — use same origin
+    // This avoids Mixed Content: the page is HTTPS and so is the API
+    return `${window.location.origin}${path}`;
 }
 
 // Audio State
@@ -364,11 +366,12 @@ function connectWebSocket() {
     let wsPort = window.location.port ? `:${window.location.port}` : '';
     let wsPath = '/ws';
     
-    if (window.location.hostname === 'sync-speaker.vercel.app' && !backendParam) {
-        wsProtocol = 'ws:';
-        wsHost = 'localhost';
-        wsPort = ':5000';
-    } else if (backendParam) {
+    const isLocal = window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' ||
+                    /^[0-9.]+$/.test(window.location.hostname);
+
+    if (backendParam) {
+        // Explicit backend override (e.g. ?backend=192.168.1.5:5000 or ?backend=my-app.onrender.com)
         const cleanedHost = backendParam.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
         const hasPort = cleanedHost.includes(':');
         const hostOnly = hasPort ? cleanedHost.split(':')[0] : cleanedHost;
@@ -380,11 +383,19 @@ function connectWebSocket() {
             wsHost = hostOnly;
             wsPort = `:${port}`;
         } else {
+            // Domain-based backend (Render tunnel etc.) — always secure
             wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             wsHost = cleanedHost;
             wsPort = '';
         }
+    } else if (!isLocal) {
+        // Cloud deployment (Render, etc.) — connect to same host over wss://
+        // The Flask server is the same origin, WebSocket goes to same host
+        wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsHost = window.location.hostname;
+        wsPort = window.location.port ? `:${window.location.port}` : '';
     }
+    // else: local — use defaults set above (ws:// + hostname + port)
     
     wsUrl = `${wsProtocol}//${wsHost}${wsPort}${wsPath}`;
     
@@ -708,18 +719,27 @@ let qrMode = 'wifi'; // Default to 'wifi' for mobile phone compatibility without
 
 function updateQRDisplay() {
     if (!lastServerInfo) return;
-    const urlParams = new URLSearchParams(window.location.search);
-    const backendParam = urlParams.get('backend');
-    const isExternalDomain = backendParam && !/^[0-9.]+$/.test(backendParam.split(':')[0]);
     
-    const targetHost = isExternalDomain ? backendParam : lastServerInfo.local_ip;
     let joinUrl = '';
     
-    if (isExternalDomain || qrMode === 'vercel') {
-        joinUrl = `https://sync-speaker.vercel.app/?backend=${targetHost}&room=${currentRoomId || ''}`;
+    if (lastServerInfo.is_cloud) {
+        // Running on cloud (e.g. Render) - use the cloud URL directly
+        joinUrl = `${lastServerInfo.base_url}/?room=${currentRoomId || ''}`;
     } else {
-        joinUrl = `http://${targetHost}:5000/?room=${currentRoomId || ''}`;
+        // Running locally - construct local or Vercel proxy URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const backendParam = urlParams.get('backend');
+        const isExternalDomain = backendParam && !/^[0-9.]+$/.test(backendParam.split(':')[0]);
+        
+        const targetHost = isExternalDomain ? backendParam : lastServerInfo.local_ip;
+        
+        if (isExternalDomain || qrMode === 'vercel') {
+            joinUrl = `https://sync-speaker.vercel.app/?backend=${targetHost}&room=${currentRoomId || ''}`;
+        } else {
+            joinUrl = `http://${targetHost}:5000/?room=${currentRoomId || ''}`;
+        }
     }
+    
     if (serverUrlDisplay) serverUrlDisplay.textContent = joinUrl;
     if (qrCodeImg) qrCodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(joinUrl)}`;
 }

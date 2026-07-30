@@ -77,6 +77,27 @@ def get_local_ip():
     except Exception:
         return "127.0.0.1"
 
+def is_render():
+    """Returns True when running on Render cloud platform."""
+    return os.environ.get('RENDER', '').lower() in ('true', '1', 'yes')
+
+def get_base_url():
+    """
+    Returns the base URL to use when constructing audio file links.
+    - On Render (or any cloud): uses https:// + the incoming request Host header
+    - On local network: uses http:// + local LAN IP + port
+    This ensures audio URLs work without Mixed Content blocks on HTTPS pages.
+    """
+    if is_render():
+        # On Render the app is behind an HTTPS reverse proxy.
+        # The Host header contains the public hostname (e.g. syncspeaker-xyz.onrender.com).
+        host = request.host  # e.g. "syncspeaker-xyz.onrender.com"
+        return f"https://{host}"
+    else:
+        local_ip = get_local_ip()
+        http_port = int(os.environ.get('PORT', 5000))
+        return f"http://{local_ip}:{http_port}"
+
 # Serve static web files
 @app.route('/')
 def index():
@@ -95,11 +116,15 @@ def serve_upload(filename):
 def get_info():
     local_ip = get_local_ip()
     http_port = int(os.environ.get('PORT', 5000))
+    cloud = is_render()
+    base = get_base_url()
     return jsonify({
         "server_time": int(time.time() * 1000),
         "local_ip": local_ip,
         "http_port": http_port,
-        "ws_port": http_port
+        "ws_port": http_port,
+        "is_cloud": cloud,
+        "base_url": base
     })
 
 # API: Get Active Room Status (only rooms that currently have a host)
@@ -187,8 +212,8 @@ def upload_file():
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
     file.save(file_path)
     
-    local_ip = get_local_ip()
-    audio_url = f"http://{local_ip}:5000/uploads/{safe_filename}"
+    base = get_base_url()
+    audio_url = f"{base}/uploads/{safe_filename}"
     
     return jsonify({
         "success": True,
@@ -250,8 +275,8 @@ def youtube_download():
         filename = f"{video_id}.{ext}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         if os.path.exists(filepath):
-            local_ip = get_local_ip()
-            audio_url = f"http://{local_ip}:5000/uploads/{filename}"
+            base = get_base_url()
+            audio_url = f"{base}/uploads/{filename}"
             return jsonify({
                 "success": True,
                 "audioUrl": audio_url,
@@ -272,8 +297,8 @@ def youtube_download():
             ext = info.get('ext', 'm4a')
             filename = f"{video_id}.{ext}"
             
-        local_ip = get_local_ip()
-        audio_url = f"http://{local_ip}:5000/uploads/{filename}"
+        base = get_base_url()
+        audio_url = f"{base}/uploads/{filename}"
         return jsonify({
             "success": True,
             "audioUrl": audio_url,
